@@ -9,51 +9,46 @@ class Online {
     // Data
     this.name = "Online"
     this.description = "The current online users"
-    this.usage = "online {option}"
+    this.usage = "online {name/server}"
+    this.example = "online MatsDeKerel"
     this.aliases = []
   }
 
-  /* _buildMessage(length, players, server) {
-    return `There ${length == 1 ? "is" : "are"} currently ${length == 0 ? "no" : length} ${length == 1 ? "player" : "players"} online in ${server}${length == 0 ? ". :(\n\n" : `:\n\`\`\`${(players.map(x => x.name)).join(", ")}\`\`\``}`
-  }
-
-  _buildSoloOptionMessage(online, args) {
-    console.log(args)
-    if(!CONSTANTS.SERVERS.includes(args.toLowerCase())) {
-      return this._buildEntireMessage(online, `Sorry, we couldn't find the server ${args}. Here are all of the servers instead:\n\n`)
-    }
-
-    for(let server of online) {
-      if(server.game == args.toLowerCase()) {
-        let returnMessage = this._buildMessage(server.users.length, server.users, server.game)
-        return returnMessage
+  _getOnlinePerson(people, person) {
+    for(let server of Object.keys(people)) {
+      if((people[server].filter(user => user.toLowerCase() == person.toLowerCase())).length > 0) {
+        return `${person} is currently playing on ${BaseFunctions.capitalizeString(server)}`
       }
     }
+    return `Could not find person or server ${person}`
   }
 
-  _buildEntireMessage(online, messageString = "") {
-    console.log(online)
-    for(let i = 0; i < online.length; i++) {
-      messageString += this._buildMessage(online[i].users.length, online[i].users, online[i].game)
-      console.log(this._buildMessage(online[i].users.length, online[i].users, online[i].game))
-    }
-    
-    return messageString
-  }
+  _getOnlineServer(people, server) {
+    let msgString = ""
 
-  async execute(message, args){
-    let online = await this.api.getOnline()
-
-    let msg;
-
-    if(args) {
-      msg = this._buildSoloOptionMessage(online, args)
+    if(people[server.toLowerCase()]) {
+      if(people[server.toLowerCase()].length > 100) return `There are currently too many people in ${BaseFunctions.capitalizeString(server)} to return the users.`
+      msgString = `There ${people[server.toLowerCase()].length == 1 ? "is" : "are"} currently ${people[server.toLowerCase()].length} ${people[server.toLowerCase()].length == 1 ? "player" : "players"} online in ${BaseFunctions.capitalizeString(server)}:`
+      msgString += "\n" + people[server.toLowerCase()].join(", ")
     } else {
-      msg = this._buildEntireMessage(online)
+      return this._getOnlinePerson(people, server)
     }
 
-    message.channel.send(msg)
-  } */
+    return msgString
+  }
+
+  _getOnlineAllServers(totals, totalOnline) {
+    let msgString = ""
+
+    for(let game of Object.keys(totals)) {
+      msgString += `${totals[game]} in ${BaseFunctions.capitalizeString(game)}, `
+    }
+
+    // Here we prepend this string to msgString and then cut off the final space and comma from the final option (x, x, x, -> x, x, x)
+    msgString = `There ${totalOnline == 1 ? "is" : "are"} currently ${totalOnline} ${totalOnline == 1 ? "player" : "players"} online:\n` + msgString.slice(0, -2)
+
+    return msgString
+  }
 
   async execute(message, args) {
     let online = await this.api.getOnline().catch(e => {
@@ -66,27 +61,39 @@ class Online {
 
     let totalOnline = 0
     let totals = {}
+    let people = {}
     let msgString = ""
     // let server of online defines every value of array online to server
     for(let server of online) {
       // Let's not include the dev servers or member-less servers
       if(server.namespace != "gameslabs" || server.users.length == 0) continue
 
+      let game = server.game.toLowerCase().replace(/-/g, " ")
+
       totalOnline += server.users.length
 
-      if(totals[server.game]) {
-        totals[server.game] += server.users.length
+      if(totals[game]) {
+        totals[game] += server.users.length
       } else {
-        totals[server.game] = server.users.length
+        totals[game] = server.users.length
+      }
+
+      if(people[game]) {
+        // A lot of juice happens here:
+        // ... makes it so that it appends the array elements to the array, not the array
+        // i.e. [1, 2, 3, 4, 5] not [1, 2, 3, [4, 5]]
+        // the .map turns the user object with properties name and id to just an array of name strings
+        people[game].push(...(server.users.map(user => user.name)))
+      } else {
+        people[game] = server.users.map(user => user.name)
       }
     }
 
-    for(let game of Object.keys(totals)) {
-      msgString += `${totals[game]} in ${BaseFunctions.capitalizeString(game.replace(/-/g, " "))}, `
+    if(!args) {
+      msgString = this._getOnlineAllServers(totals, totalOnline)
+    } else {
+      msgString = this._getOnlineServer(people, args)
     }
-
-    // Here we prepend this string to msgString and then cut off the final space and comma from the final option (x, x, x, -> x, x, x)
-    msgString = `There ${totalOnline == 1 ? "is" : "are"} currently ${totalOnline} ${totalOnline == 1 ? "player" : "players"} online:\n` + msgString.slice(0, -2)
     
     message.channel.send(msgString)
 
